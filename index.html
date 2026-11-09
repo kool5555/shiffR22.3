@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ระบบ On-Call พยาบาล & แพทย์</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { background-color: #f0fdfa; font-family: 'Sarabun', sans-serif; overflow-x: hidden; }
+    .calendar-card { background: white; border-radius: 1rem; box-shadow: 0 4px 15px rgba(20,184,166,0.1); width: 100%; }
+    
+    /* ปรับ Grid ไม่ให้ทะลุจอมือถือ */
+    .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); width: 100%; }
+    
+    /* แก้ไขเส้นตารางให้บางลง (1px) และขนาดพอดีมือถือ */
+    .cell { min-height: 85px; border: 1px solid #ccfbf1; position: relative; cursor: pointer; transition: 0.2s; padding: 2px; overflow: hidden; }
+    @media (min-width: 768px) { .cell { min-height: 120px; padding: 6px; border-width: 1px; } }
+    
+    .cell:hover { background-color: #e0f2f1; z-index: 5; }
+    .cell.today { background-color: #f0fdfa; border: 2px solid #0d9488 !important; }
+    .cell.weekend { background-color: #f8fafc; }
+
+    .badge-sukanya { border-left: 3px solid #f472b6; background: #fdf2f8; color: #be185d; }
+    .badge-oomaree { border-left: 3px solid #3b82f6; background: #eff6ff; color: #1d4ed8; }
+    
+    /* ป้ายชื่อในตารางให้เล็กลง */
+    .event-badge { 
+      font-size: 9px; padding: 3px 4px; border-radius: 6px; margin-bottom: 2px; 
+      line-height: 1.3; display: block; text-align: left; 
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    @media (min-width: 768px) { .event-badge { font-size: 11px; padding: 4px; white-space: normal; } }
+    
+    .modal-close { cursor: pointer; transition: 0.3s; }
+    .modal-close:hover { color: #f43f5e; transform: rotate(90deg); }
+
+    .custom-scroll::-webkit-scrollbar { width: 4px; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #99f6e4; border-radius: 10px; }
+  </style>
+</head>
+<body class="p-2 md:p-4 pb-20 w-full">
+
+  <div class="max-w-6xl mx-auto w-full">
+    <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-3">
+      <div class="flex items-center gap-3">
+        <div class="bg-teal-600 w-10 h-10 rounded-xl flex items-center justify-center text-white text-lg shadow-md">
+          <i class="fas fa-stethoscope"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold text-slate-800">ระบบ On-Call</h1>
+          <p class="text-[10px] text-teal-600 font-bold" id="currentDateDisplay"></p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-1 bg-white p-1 rounded-xl shadow-sm border border-teal-100 w-full justify-between md:w-auto">
+        <button onclick="changeMonth(-1)" class="w-8 h-8 rounded-lg hover:bg-teal-50 text-teal-600"><i class="fas fa-chevron-left"></i></button>
+        <h2 id="monthTitle" class="text-sm font-bold text-slate-700 min-w-[120px] text-center uppercase">...</h2>
+        <button onclick="changeMonth(1)" class="w-8 h-8 rounded-lg hover:bg-teal-50 text-teal-600"><i class="fas fa-chevron-right"></i></button>
+        <div class="hidden md:block h-5 w-[1px] bg-teal-100 mx-1"></div>
+        <button onclick="openEditForm()" class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm">
+          <i class="fas fa-plus"></i> ลงเวร/แจ้งลา
+        </button>
+      </div>
+    </div>
+
+    <div class="mb-4 bg-teal-50 border border-teal-200 p-3 rounded-2xl flex flex-col md:flex-row items-center justify-center gap-2 shadow-sm text-sm">
+      <span class="text-teal-700 font-bold"><i class="fas fa-user-md mr-1"></i> แพทย์ Consult ประจำเดือน:</span>
+      <span id="monthlyDoctor" class="text-base text-teal-800 font-black uppercase">Loading...</span>
+    </div>
+
+    <div class="calendar-card overflow-hidden border border-teal-200">
+      <div class="calendar-grid bg-teal-50 border-b border-teal-200">
+        <div class="py-2 text-center text-[10px] font-bold text-slate-500">จ.</div>
+        <div class="py-2 text-center text-[10px] font-bold text-slate-500">อ.</div>
+        <div class="py-2 text-center text-[10px] font-bold text-slate-500">พ.</div>
+        <div class="py-2 text-center text-[10px] font-bold text-slate-500">พฤ.</div>
+        <div class="py-2 text-center text-[10px] font-bold text-slate-500">ศ.</div>
+        <div class="py-2 text-center text-[10px] font-bold text-indigo-500">ส.</div>
+        <div class="py-2 text-center text-[10px] font-bold text-rose-500">อา.</div>
+      </div>
+      <div id="calendarDays" class="calendar-grid"></div>
+    </div>
+
+    <div class="mt-8 bg-white rounded-[1.5rem] p-5 shadow-sm border border-teal-100 w-full">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="bg-teal-600 text-white p-2 rounded-xl text-sm"><i class="fas fa-calendar-alt"></i></div>
+        <h2 class="text-base font-bold text-teal-900">ตารางแพทย์เวร Consult ตลอดปี</h2>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3" id="yearlyDocGrid"></div>
+    </div>
+  </div>
+
+  <div id="viewModal" class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm hidden items-center justify-center p-2">
+    <div class="bg-white rounded-[1.5rem] w-full max-w-sm shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
+      <div class="absolute top-4 right-4 text-2xl text-slate-400 modal-close z-10" onclick="closeModal('viewModal')">&times;</div>
+      <div class="p-6 overflow-y-auto custom-scroll w-full" id="viewContent"></div>
+    </div>
+  </div>
+
+  <div id="editModal" class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm hidden items-center justify-center p-2">
+    <div class="bg-white rounded-[1.5rem] w-full max-w-sm shadow-2xl relative overflow-hidden flex flex-col max-h-[95vh]">
+      <div class="absolute top-4 right-4 text-2xl text-slate-400 modal-close z-10" onclick="closeModal('editModal')">&times;</div>
+      <div class="p-6 overflow-y-auto custom-scroll w-full">
+        <h3 class="text-xl font-black text-slate-800 mb-4" id="modalTitle">ลงบันทึกเวร / แจ้งลา</h3>
+        <form onsubmit="handleSave(event)" class="space-y-3">
+          <input type="hidden" id="f_rowIndex"> <div>
+            <label class="text-[10px] font-bold text-teal-600 uppercase ml-1 block mb-1">วันที่ปฏิบัติงาน</label>
+            <input type="date" id="f_date_raw" onchange="updateThaiDateDisplay()" required class="w-full bg-slate-50 border border-teal-50 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-500 font-bold">
+            <input type="hidden" id="f_date_thai">
+          </div>
+          <div>
+            <label class="text-[10px] font-bold text-teal-600 uppercase ml-1 block mb-1">พยาบาล</label>
+            <select id="f_name" required class="w-full bg-slate-50 border border-teal-50 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-500 font-bold text-slate-700">
+              <option value="สุกัญญา">สุกัญญา (สีชมพู)</option>
+              <option value="อ้อมอารีย์">อ้อมอารีย์ (สีน้ำเงิน)</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-[10px] font-bold text-teal-600 uppercase ml-1 block mb-1">หมายเหตุ (เช่น ลาพักร้อน, อบรม, เปลี่ยนเวร)</label>
+            <textarea id="f_note" rows="2" placeholder="ระบุรายละเอียด..." class="w-full bg-slate-50 border border-teal-50 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-500 font-medium"></textarea>
+          </div>
+          <button type="submit" class="w-full bg-teal-600 text-white font-bold py-3 mt-2 rounded-lg shadow-md hover:bg-teal-700 transition-all text-sm flex justify-center items-center gap-2">
+            <i class="fas fa-save"></i> บันทึกข้อมูล
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // 🔴 1. วาง URL Web App ของคุณในบรรทัดนี้!
+    // ==========================================
+    const API_URL = "https://script.google.com/macros/s/AKfycbzKJ1Xe3lLEweNhB9Z6o6K4Lx60ZepQY46YVZCY04Zob_aBunFwI0EWLxuj5pZh43mLTQ/exec"; 
+    // ==========================================
+
+    const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+    let nurseData = [], doctorData = [], currentViewDate = new Date();
+    const CONTACTS = { "สุกัญญา": "061-7765604", "อ้อมอารีย์": "094-1843548" };
+
+    window.onload = () => { fetchData(); updateHeaderDate(); };
+    function updateHeaderDate() {
+      const now = new Date();
+      document.getElementById('currentDateDisplay').innerText = `วันนี้: ${now.getDate()} ${thaiMonths[now.getMonth()]} ${now.getFullYear() + 543}`;
+    }
+
+    async function fetchData() {
+      if(!API_URL.includes("script.google.com")) {
+        Swal.fire("ข้อผิดพลาด", "กรุณาใส่ลิงก์ API_URL ในโค้ดก่อนใช้งาน", "error"); return;
+      }
+      Swal.fire({ title: 'กำลังโหลดข้อมูล...', didOpen: () => Swal.showLoading() });
+      try {
+        const response = await fetch(API_URL + "?action=getData");
+        const data = await response.json();
+        nurseData = data.nurses; 
+        doctorData = data.doctors;
+        renderCalendar(); 
+        renderYearlyDoctors(); 
+        Swal.close();
+      } catch (error) {
+        Swal.fire("เชื่อมต่อล้มเหลว", "ไม่สามารถดึงข้อมูลได้", "error");
+      }
+    }
+
+    function parseThaiDate(dateStr) {
+      if (!dateStr) return null;
+      const parts = dateStr.trim().split(/\s+/);
+      if (parts.length < 3) return null;
+      const d = parseInt(parts[0]), m = thaiMonths.indexOf(parts[1]), y = parseInt(parts[2]) - 543;
+      return new Date(y, m, d);
+    }
+
+    function renderCalendar() {
+      const daysDiv = document.getElementById('calendarDays');
+      daysDiv.innerHTML = '';
+      const vY = currentViewDate.getFullYear(), vM = currentViewDate.getMonth();
+      const monthYearText = `${thaiMonths[vM]} ${vY + 543}`;
+      document.getElementById('monthTitle').innerText = monthYearText;
+
+      const currentDoc = doctorData.find(d => d.monthYear.includes(monthYearText));
+      document.getElementById('monthlyDoctor').innerText = currentDoc ? currentDoc.name : "N/A";
+
+      let firstDay = new Date(vY, vM, 1).getDay();
+      let startOffset = firstDay === 0 ? 6 : firstDay - 1; 
+
+      const daysInMonth = new Date(vY, vM + 1, 0).getDate();
+      for (let i = 0; i < startOffset; i++) daysDiv.innerHTML += `<div class="cell bg-slate-50/30 border-0"></div>`;
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dObj = new Date(vY, vM, day), dow = dObj.getDay();
+        const isWE = (dow === 0 || dow === 6), isToday = dObj.toDateString() === new Date().toDateString();
+        
+        const dayEvents = nurseData.filter(it => {
+          const itD = parseThaiDate(it.date);
+          return itD && itD.getDate() === day && itD.getMonth() === vM && itD.getFullYear() === vY;
+        });
+
+        daysDiv.innerHTML += `
+          <div class="cell p-1 md:p-2 ${isToday ? 'today' : ''} ${isWE ? 'weekend' : ''}" onclick="showDetails(${day}, ${vM}, ${vY})">
+            <span class="text-[9px] font-bold ${dow === 0 ? 'text-rose-500' : (dow === 6 ? 'text-indigo-500' : 'text-slate-400')}">${day}</span>
+            <div class="mt-1 space-y-[2px]">
+              ${dayEvents.map(ev => `
+                <div class="event-badge ${ev.name === 'สุกัญญา' ? 'badge-sukanya' : 'badge-oomaree'}">
+                  <span class="font-bold">${ev.name.split(' ')[0]}</span>
+                  ${ev.note ? `<br><span class="text-[7px] opacity-80 font-normal italic">(${ev.note})</span>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          </div>`;
+      }
+    }
+
+    function renderYearlyDoctors() {
+      const grid = document.getElementById('yearlyDocGrid');
+      grid.innerHTML = doctorData.map(doc => `
+        <div class="bg-teal-50 border border-teal-100 p-3 rounded-xl text-center">
+          <p class="text-[9px] font-bold text-teal-600 uppercase mb-1">${doc.monthYear}</p>
+          <p class="text-xs font-black text-slate-700">${doc.name}</p>
+        </div>`).join('');
+    }
+
+    function showDetails(day, month, year) {
+      const tDate = `${day} ${thaiMonths[month]} ${year + 543}`;
+      const evs = nurseData.filter(it => it.date === tDate);
+      let html = `<div class="text-center mb-4"><p class="text-teal-600 font-black text-lg">${tDate}</p></div>`;
+      
+      if(evs.length === 0) {
+        html += `<p class="text-center text-slate-400 py-6 text-xs italic">ไม่มีเวรพยาบาลในวันนี้</p>`;
+      } else {
+        evs.forEach(ev => {
+          const phone = CONTACTS[ev.name];
+          html += `
+          <div class="p-4 rounded-2xl ${ev.name === 'สุกัญญา' ? 'bg-pink-50' : 'bg-blue-50'} border border-white shadow-sm flex justify-between items-center mb-3 relative">
+            
+            <button onclick="editEntry(${ev.rowIndex})" class="absolute top-2 right-2 w-6 h-6 rounded-full bg-white text-teal-600 shadow flex justify-center items-center hover:bg-teal-50 text-[10px]">
+              <i class="fas fa-edit"></i>
+            </button>
+
+            <div>
+              <p class="font-black text-base ${ev.name === 'สุกัญญา' ? 'text-pink-700' : 'text-blue-700'}">${ev.name}</p>
+              <p class="text-[11px] text-slate-500 mt-1">${ev.note || 'ปฏิบัติหน้าที่ปกติ'}</p>
+            </div>
+            
+            <button onclick="confirmCall('${ev.name}', '${phone}')" class="w-10 h-10 rounded-full bg-white text-green-500 shadow-md flex items-center justify-center hover:scale-110 active:scale-95 transition-all text-sm mt-4 mr-6">
+              <i class="fas fa-phone-alt"></i>
+            </button>
+          </div>`;
+        });
+      }
+      document.getElementById('viewContent').innerHTML = html;
+      openModal('viewModal');
+    }
+
+    function confirmCall(n, p) {
+      Swal.fire({
+        title: 'ยืนยันการโทร', text: `คุณต้องการโทรหา ${n} ใช่หรือไม่?`,
+        icon: 'question', showCancelButton: true, confirmButtonColor: '#10b981', confirmButtonText: 'โทรออก', cancelButtonText: 'ยกเลิก',
+        customClass: { popup: 'rounded-2xl' }
+      }).then((r) => { if (r.isConfirmed) window.location.href = `tel:${p}`; });
+    }
+
+    function openEditForm() {
+      const vY = currentViewDate.getFullYear(), vM = String(currentViewDate.getMonth() + 1).padStart(2, '0');
+      document.getElementById('modalTitle').innerText = "ลงบันทึกเวร / แจ้งลา (ใหม่)";
+      document.getElementById('f_rowIndex').value = ""; // เคลียร์ rowIndex
+      document.getElementById('f_date_raw').value = `${vY}-${vM}-01`; 
+      document.getElementById('f_note').value = '';
+      updateThaiDateDisplay(); 
+      openModal('editModal');
+    }
+
+    function editEntry(rowIndex) {
+      closeModal('viewModal');
+      const ev = nurseData.find(d => d.rowIndex == rowIndex);
+      if(!ev) return;
+
+      document.getElementById('modalTitle').innerText = "แก้ไขข้อมูลเวร";
+      document.getElementById('f_rowIndex').value = ev.rowIndex;
+      
+      const dObj = parseThaiDate(ev.date);
+      if (dObj) {
+        const mm = String(dObj.getMonth() + 1).padStart(2, '0');
+        const dd = String(dObj.getDate()).padStart(2, '0');
+        document.getElementById('f_date_raw').value = `${dObj.getFullYear()}-${mm}-${dd}`;
+      }
+      updateThaiDateDisplay();
+
+      document.getElementById('f_name').value = ev.name;
+      document.getElementById('f_note').value = ev.note || "";
+      openModal('editModal');
+    }
+
+    function updateThaiDateDisplay() {
+      const val = document.getElementById('f_date_raw').value; if(!val) return;
+      const d = new Date(val); document.getElementById('f_date_thai').value = `${d.getDate()} ${thaiMonths[d.getMonth()]} ${d.getFullYear() + 543}`;
+    }
+
+    async function handleSave(e) {
+      e.preventDefault();
+      const payload = { 
+        rowIndex: document.getElementById('f_rowIndex').value,
+        date: document.getElementById('f_date_thai').value, 
+        name: document.getElementById('f_name').value, 
+        note: document.getElementById('f_note').value 
+      };
+      
+      Swal.fire({ title: 'กำลังบันทึกข้อมูล...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+      try {
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          body: JSON.stringify({ action: 'saveEntry', payload: payload }),
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+        });
+        const result = await response.json();
+        closeModal('editModal');
+        Swal.fire({ icon: 'success', title: 'สำเร็จ', text: result.message, timer: 1500 });
+        fetchData();
+      } catch (error) {
+        Swal.fire("ข้อผิดพลาด", "ไม่สามารถบันทึกข้อมูลได้", "error");
+      }
+    }
+
+    function changeMonth(o) { currentViewDate.setMonth(currentViewDate.getMonth() + o); renderCalendar(); }
+    function openModal(id) { document.getElementById(id).classList.remove('hidden'); document.getElementById(id).classList.add('flex'); }
+    function closeModal(id) { document.getElementById(id).classList.add('hidden'); document.getElementById(id).classList.remove('flex'); }
+  </script>
+</body>
+</html>
